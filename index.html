@@ -157,6 +157,27 @@ nav.bar button.on{color:var(--fg)}
 .banner{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--soft);border-radius:14px;padding:10px 12px 10px 14px;font-size:13px;margin-bottom:16px;color:var(--mut)}
 .banner button{font-weight:600;color:var(--fg);padding:6px 10px;border-radius:10px;background:var(--surface);border:1px solid var(--line);white-space:nowrap}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(130px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--onink);padding:10px 16px;border-radius:12px;font-size:14px;z-index:60;max-width:90%}
+
+#lock{position:fixed;inset:0;z-index:100;background:var(--bg);display:flex;align-items:center;justify-content:center;overflow:auto;
+  padding:max(16px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) max(16px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.lk{width:100%;max-width:340px;text-align:center}
+.lk .brand{font-family:var(--display);font-weight:700;font-size:20px;letter-spacing:-.02em;margin-bottom:26px}
+.lk h2{font-family:var(--display);font-size:22px;margin:0 0 6px;letter-spacing:-.01em}
+.lk .sub{color:var(--mut);font-size:14px;min-height:20px}
+.dots{display:flex;justify-content:center;gap:14px;margin:22px 0 8px}
+.dots i{width:12px;height:12px;border-radius:50%;border:1.5px solid var(--mut)}
+.dots i.on{background:var(--fg);border-color:var(--fg)}
+.dots.shake{animation:shake .35s}
+@keyframes shake{20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
+@media (prefers-reduced-motion:reduce){.dots.shake{animation:none}}
+.lk-msg{min-height:22px;color:var(--warn);font-size:13.5px;margin-bottom:10px}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.pad button{height:62px;border-radius:18px;background:var(--surface);border:1px solid var(--line);font-family:var(--display);font-size:24px;font-weight:600}
+.pad button:active{background:var(--soft)}
+.pad .fn{background:none;border-color:transparent;font-size:14px;color:var(--mut);font-family:var(--font);font-weight:500}
+.lk-links{margin-top:16px;display:flex;justify-content:center;gap:16px;flex-wrap:wrap}
+.lk-links button{color:var(--mut);font-size:14px;padding:8px}
+body.locked .wrap,body.locked .fab,body.locked nav.bar{display:none}
 </style>
 </head>
 <body>
@@ -172,6 +193,7 @@ nav.bar button.on{color:var(--fg)}
 
 <button class="fab" id="fab" data-act="add"></button>
 <nav class="bar"><div class="in-nav" id="nav"></div></nav>
+<div id="lock" hidden></div>
 <div id="sheet" hidden></div>
 
 <script>
@@ -492,6 +514,7 @@ function dataSheet(){
   openSheet(
     '<div class="grab"></div><h2>Data dan cadangan</h2>'+
     '<div class="hint" style="margin-top:0">Data tersimpan di browser ini saja. Salin cadangan secara berkala dan simpan di catatan atau pesan ke diri sendiri.</div>'+
+    (canPin?'<label>Keamanan</label><div class="actions" style="margin-top:0">'+(pinInfo()?'<button type="button" class="btn ghost" id="f-lock">Kunci</button><button type="button" class="btn ghost" id="f-chpin">Ubah PIN</button><button type="button" class="btn ghost" id="f-offpin">Matikan</button>':'<button type="button" class="btn ghost" id="f-onpin">Aktifkan PIN</button>')+'</div><div class="hint">PIN mengunci tampilan aplikasi di perangkat ini. Aplikasi terkunci otomatis setelah ditinggalkan lebih dari 1 menit.</div>':'')+
     '<div class="actions"><button type="button" class="btn" id="f-copy">Salin cadangan</button></div>'+
     '<label for="f-json">Pulihkan dari cadangan</label><textarea id="f-json" placeholder="Tempel teks cadangan di sini"></textarea>'+
     '<div class="err" id="f-err" hidden></div>'+
@@ -499,6 +522,10 @@ function dataSheet(){
     '<div class="hint">Hapus akan menghapus semua catatan di browser ini.</div>'+
     '<div class="hint">Pasang di layar utama Android: buka halaman ini di Chrome, ketuk menu ⋮, lalu Tambahkan ke layar utama.</div>',
     function(p){
+      var bl=$('#f-lock',p);if(bl)bl.addEventListener('click',function(){lockNow()});
+      var bo=$('#f-onpin',p);if(bo)bo.addEventListener('click',function(){closeSheet();setupPin(function(){toast('PIN aktif')},false)});
+      var bc=$('#f-chpin',p);if(bc)bc.addEventListener('click',function(){closeSheet();verifyThen(function(){setupPin(function(){toast('PIN diganti')},false)})});
+      var bf=$('#f-offpin',p);if(bf)bf.addEventListener('click',function(){closeSheet();verifyThen(function(){lsDel(PINKEY);lsSet(SKIPKEY,'1');toast('PIN dimatikan')})});
       $('#f-copy',p).addEventListener('click',function(){
         var txt=JSON.stringify(S),ta=$('#f-json',p);
         function fallback(){ta.value=txt;ta.focus();ta.select();showErr('Salin otomatis tidak tersedia. Teks cadangan sudah dipilih, salin secara manual.')}
@@ -537,7 +564,121 @@ document.addEventListener('click',function(e){
   A[t.dataset.act](t.dataset,t);
 });
 document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!$('#sheet').hidden)closeSheet()});
-render();
+/* ===== Kunci PIN ===== */
+var PINKEY='kantong-pin',SKIPKEY='kantong-pin-skip',FAILKEY='kantong-pin-fail',PINLEN=6;
+function lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
+function lsSet(k,v){try{localStorage.setItem(k,v)}catch(e){}}
+function lsDel(k){try{localStorage.removeItem(k)}catch(e){}}
+function pinInfo(){try{return JSON.parse(lsGet(PINKEY))}catch(e){return null}}
+var canPin=!!(window.crypto&&window.crypto.subtle&&window.isSecureContext);
+function b64(buf){var s='',b=new Uint8Array(buf);for(var i=0;i<b.length;i++)s+=String.fromCharCode(b[i]);return btoa(s)}
+function unb64(s){var r=atob(s),a=new Uint8Array(r.length);for(var i=0;i<r.length;i++)a[i]=r.charCodeAt(i);return a}
+function newSalt(){return b64(window.crypto.getRandomValues(new Uint8Array(16)))}
+function hashPin(pin,salt){
+  var enc=new TextEncoder();
+  return window.crypto.subtle.importKey('raw',enc.encode(pin),'PBKDF2',false,['deriveBits']).then(function(k){
+    return window.crypto.subtle.deriveBits({name:'PBKDF2',salt:unb64(salt),iterations:150000,hash:'SHA-256'},k,256);
+  }).then(b64);
+}
+function failState(){try{var f=JSON.parse(lsGet(FAILKEY));if(f&&typeof f.n==='number')return f}catch(e){}return {n:0,until:0}}
+
+var pinBuf='',pinCb=null,pinCancel=null,wipeArmed=false;
+function paintDots(){var h='';for(var i=0;i<PINLEN;i++)h+='<i'+(i<pinBuf.length?' class="on"':'')+'></i>';var d=$('#lk-d');if(d)d.innerHTML=h}
+function pinMsg(m){var e=$('#lk-m');if(e)e.textContent=m||''}
+function pinFail(m){
+  pinBuf='';paintDots();pinMsg(m);
+  var d=$('#lk-d');if(d){d.classList.remove('shake');void d.offsetWidth;d.classList.add('shake')}
+}
+function pinClose(){
+  var el=$('#lock');el.hidden=true;el.innerHTML='';pinCb=null;
+  if($('#sheet').hidden)document.body.classList.remove('lock');
+}
+function pinScreen(o){
+  pinBuf='';pinCb=o.onPin;pinCancel=o.onCancel||pinClose;
+  var pad='',i;
+  for(i=1;i<=9;i++)pad+='<button type="button" data-k="'+i+'">'+i+'</button>';
+  pad+='<span></span><button type="button" data-k="0">0</button><button type="button" class="fn" data-k="del" aria-label="Hapus angka terakhir">Hapus</button>';
+  var links='';
+  if(o.cancel)links+='<button type="button" data-lk="cancel">Batal</button>';
+  if(o.skip)links+='<button type="button" data-lk="skip">Lewati dulu</button>';
+  if(o.forgot)links+='<button type="button" data-lk="forgot">Lupa PIN?</button>';
+  var el=$('#lock');
+  el.innerHTML='<div class="lk"><div class="brand">Kantong</div><h2>'+esc(o.title)+'</h2><div class="sub">'+esc(o.sub||'')+'</div><div class="dots" id="lk-d"></div><div class="lk-msg" id="lk-m" role="alert"></div><div class="pad">'+pad+'</div><div class="lk-links">'+links+'</div></div>';
+  el.hidden=false;document.body.classList.add('lock');paintDots();
+}
+function pinPress(k){
+  if(!pinCb)return;
+  if(k==='del'){pinBuf=pinBuf.slice(0,-1);paintDots();return}
+  if(pinBuf.length>=PINLEN)return;
+  pinMsg('');pinBuf+=k;paintDots();
+  if(pinBuf.length===PINLEN){var cb=pinCb,v=pinBuf;setTimeout(function(){cb(v)},90)}
+}
+
+function showUnlock(){
+  var info=pinInfo();
+  document.body.classList.add('locked');
+  pinScreen({title:'Masukkan PIN',sub:'Buka Kantong',forgot:true,onPin:function(pin){
+    var f=failState();
+    if(f.until>Date.now()){pinFail('Tunggu '+Math.ceil((f.until-Date.now())/1000)+' detik, lalu coba lagi.');return}
+    hashPin(pin,info.salt).then(function(h){
+      if(h===info.hash){lsDel(FAILKEY);document.body.classList.remove('locked');pinClose();render()}
+      else{
+        var n=f.n+1;
+        if(n>=5){lsSet(FAILKEY,JSON.stringify({n:0,until:Date.now()+30000}));pinFail('Salah 5 kali. Tunggu 30 detik.')}
+        else{lsSet(FAILKEY,JSON.stringify({n:n,until:0}));pinFail('PIN salah.')}
+      }
+    },function(){pinFail('Perangkat tidak bisa memeriksa PIN.')});
+  }});
+}
+function lockNow(){if(!canPin||!pinInfo())return;closeSheet();showUnlock()}
+function verifyThen(fn){
+  var info=pinInfo();if(!info){fn();return}
+  pinScreen({title:'PIN saat ini',sub:'Masukkan PIN untuk melanjutkan',cancel:true,onPin:function(pin){
+    hashPin(pin,info.salt).then(function(h){if(h===info.hash){pinClose();fn()}else pinFail('PIN salah.')},function(){pinFail('Perangkat tidak bisa memeriksa PIN.')});
+  }});
+}
+function setupPin(done,first){
+  pinScreen({title:'Buat PIN',sub:PINLEN+' angka untuk membuka Kantong',skip:first,cancel:!first,onPin:function(p1){
+    pinScreen({title:'Ulangi PIN',sub:'Masukkan PIN yang sama',cancel:true,onCancel:function(){setupPin(done,first)},onPin:function(p2){
+      if(p1!==p2){pinFail('PIN tidak sama. Ulangi dari awal.');setTimeout(function(){setupPin(done,first)},1000);return}
+      var salt=newSalt();
+      hashPin(p1,salt).then(function(h){
+        lsSet(PINKEY,JSON.stringify({salt:salt,hash:h}));lsDel(SKIPKEY);lsDel(FAILKEY);pinClose();if(done)done();
+      },function(){pinFail('Perangkat tidak bisa membuat PIN.')});
+    }});
+  }});
+}
+function forgotScreen(){
+  wipeArmed=false;pinCb=null;
+  $('#lock').innerHTML='<div class="lk"><div class="brand">Kantong</div><h2>Lupa PIN?</h2><div class="sub" style="margin:10px 0 22px">PIN tidak bisa dipulihkan. Kamu bisa menghapus PIN, tetapi semua catatan di perangkat ini ikut terhapus. Kalau punya teks cadangan, pulihkan setelah itu.</div><div class="actions" style="flex-direction:column"><button type="button" class="btn danger" data-lk="wipe">Hapus PIN dan semua data</button><button type="button" class="btn ghost" data-lk="back">Kembali</button></div></div>';
+}
+$('#lock').addEventListener('click',function(e){
+  var b=e.target.closest('button');if(!b)return;
+  if(b.dataset.k!==undefined){pinPress(b.dataset.k);return}
+  var a=b.dataset.lk;
+  if(a==='cancel'){pinCancel()}
+  else if(a==='skip'){lsSet(SKIPKEY,'1');pinClose()}
+  else if(a==='forgot'){forgotScreen()}
+  else if(a==='back'){showUnlock()}
+  else if(a==='wipe'){
+    if(!wipeArmed){wipeArmed=true;b.textContent='Ketuk lagi untuk menghapus';return}
+    S={tx:[],debts:[]};save();lsDel(PINKEY);lsDel(FAILKEY);lsSet(SKIPKEY,'1');
+    document.body.classList.remove('locked');pinClose();render();toast('PIN dan data dihapus');
+  }
+});
+document.addEventListener('keydown',function(e){
+  if($('#lock').hidden||!pinCb)return;
+  if(/^[0-9]$/.test(e.key))pinPress(e.key);
+  else if(e.key==='Backspace')pinPress('del');
+});
+var hiddenAt=0;
+document.addEventListener('visibilitychange',function(){
+  if(document.hidden){hiddenAt=Date.now();return}
+  if(hiddenAt&&canPin&&pinInfo()&&!document.body.classList.contains('locked')&&Date.now()-hiddenAt>60000)lockNow();
+});
+
+if(canPin&&pinInfo()){showUnlock()}
+else{render();if(canPin&&!lsGet(SKIPKEY))setupPin(null,true)}
 })();
 
 if('serviceWorker' in navigator){

@@ -1,6 +1,6 @@
 # Kantong
 
-Pencatat keuangan, hutang, dan piutang. Satu halaman web yang bisa dipasang di Android dan dipakai tanpa internet. Data tersimpan di perangkat, tanpa login.
+Pencatat keuangan, hutang, dan piutang. Satu halaman web yang bisa dipasang di Android dan dipakai tanpa internet. Dikunci dengan PIN 6 angka (opsional). Data tersimpan di perangkat, tanpa akun online.
 
 ## Berkas
 
@@ -27,4 +27,6 @@ Pencatat keuangan, hutang, dan piutang. Satu halaman web yang bisa dipasang di A
 
 - Data tersimpan di browser ponsel. Salin cadangan secara berkala lewat ikon gerigi di dalam aplikasi.
 - Setelah mengubah `index.html`, naikkan nilai `VERSI` di `sw.js` (misalnya `kantong-v2`) agar perangkat mengambil versi terbaru.
+- PIN bisa dibuat, diganti, dimatikan, atau dipakai untuk mengunci sekarang lewat ikon gerigi. Aplikasi terkunci otomatis setelah ditinggalkan lebih dari 1 menit.
+- PIN tidak bisa dipulihkan. Kalau lupa, pilih "Lupa PIN?" di layar kunci; itu menghapus semua data di perangkat, jadi simpan cadangan.
 - Data contoh di awal bisa dihapus dengan tombol **Hapus contoh**.

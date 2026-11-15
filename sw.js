@@ -1,6 +1,6 @@
 // Service worker Kantong: menyimpan berkas aplikasi agar bisa dibuka tanpa internet.
 // Setelah mengubah index.html, naikkan nomor VERSI supaya perangkat mengambil versi baru.
-var VERSI = 'kantong-v1';
+var VERSI = 'kantong-v2';
 var BERKAS = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', function (e) {
